@@ -1,0 +1,111 @@
+---
+# docker-composeのバージョン指定
+version: '3'
+
+# 以下でserviceを定義
+services:
+  # ------------------------------------------------------------------------------------------------------------------------------
+  # webコンテナ
+  web:
+    # 構築時に適用するオプション指定
+    # 以下の場合、
+    # 「./services/microservice-sample-web/Dockerfile」で構築したイメージを
+    # 「microservice_web:1.0」としてタグ付けしている。
+    build:
+      # Dockerfileのパス
+      context: ./services/microservice-sample-web
+      # Dockerfileの名前
+      dockerfile: Dockerfile
+    # コンテナを実行時に元となるイメージ指定(バージョン1のファイル形式だと、buildとimageは同時に使えない。)
+    image: microservice_web:1.0
+
+    # 公開用のポート
+    # ホスト側とコンテナ側の両方のポートを指定(ホスト側:コンテナ側)
+    # また、コンテナ側のポートのみも指定できる(この場合ホスト側はランダムなポートが選ばれる)。
+    # ホスト側:コンテナ側の書式でポートを割り当てる時、コンテナのポートが60以下であるとエラーが発生する。
+    # これはYAMLが xx:yy 形式の指定を、60進数(60が基準)の数値とみなすから。
+    # そのため、ポートの割り当てには常に文字列として指定することを推奨する("で囲んで文字扱いにする)。
+    # 以下の場合、
+    # ホストの3000のポートをwebコンテナの3000に割り当てる
+    ports:
+      - 3000:3000
+    # 環境変数を追加する
+    # 配列もしくは辞書形式(dictionary)で指定できる。
+    # boolean値(true、false、yes、noのいずれか)はYAMLパーサによってTrueかFalseに変換されないよう、クォート(')で囲む必要がある。
+    # 以下を設定。
+    # 環境変数名NUXT_HOST、
+    # 環境変数名USER_SERVICE、
+    # 環境変数名TWEET_SERVICE、
+    # 環境変数名GITHUB_CLIENT_ID、
+    # 環境変数名GITHUB_CLIENT_SECRET、
+    environment:
+      NUXT_HOST: 0.0.0.0
+      USER_SERVICE: http://user:3000
+      TWEET_SERVICE: http://tweet:3000
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+  # ------------------------------------------------------------------------------------------------------------------------------
+  # userコンテナ
+  user:
+    # 以下のDockerfileで構築したイメージを
+    # microservice_user:1.0としてタグ付け
+    build:
+      context: ./services/microservice-sample-user
+      dockerfile: Dockerfile
+    image: microservice_user:1.0
+    # 環境変数の設定
+    environment:
+      MONGODB_URL: mongodb://user-db:27017/user
+      MONGODB_ADMIN_NAME: root
+      MONGODB_ADMIN_PASS: example
+      WAIT_HOSTS: user-db:27017
+    # サービス間の依存関係を指定
+    # docker-compose up を実行したら、依存関係のある順番に従ってサービスを起動する
+    # 以下の場合、
+    # userコンテナを起動する前に、user-dbコンテナを起動する
+    depends_on:
+      - user-db
+  # ------------------------------------------------------------------------------------------------------------------------------
+  # user-dbコンテナ
+  user-db:
+    image: mongo
+    # 名前付きのボリューム
+    # 以下の場合、
+    # user-dbという名前のボリューム
+    volumes:
+      - user-db:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+  # ------------------------------------------------------------------------------------------------------------------------------
+  # tweetコンテナ
+  tweet:
+    build:
+      context: ./services/microservice-sample-tweet
+      dockerfile: Dockerfile
+    image: microservice_tweet:1.0
+    environment:
+      MONGODB_URL: mongodb://tweet-db:27017/user
+      MONGODB_ADMIN_NAME: root
+      MONGODB_ADMIN_PASS: example
+      WAIT_HOSTS: tweet-db:27017
+      USER_SERVICE: http://user:3000
+    depends_on:
+      - tweet-db
+  # ------------------------------------------------------------------------------------------------------------------------------
+  # tweet-dbコンテナ
+  tweet-db:
+    image: mongo
+    volumes:
+      - tweet-db:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+
+# データを永続化できる場所
+# 外部HDDのようなイメージ。
+# コンテナ内部にデータを保存しても、コンテナを破棄すると消えてしまう
+# したがって、データを永続化したい場合はコンテナの外にデータを置く必要がある。
+volumes:
+  user-db:
+  tweet-db:
